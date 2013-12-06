@@ -88,7 +88,7 @@ class Parser(Spider):
         apps = map(self.app_data_prepare, apps)
         self.store_apps_data(apps)
 
-        if len(apps) == self.PER_PAGE and task.page < 10:
+        if len(apps) == self.PER_PAGE:
             yield self.make_apps_task(task.page + 1)
 
     def shutdown(self):

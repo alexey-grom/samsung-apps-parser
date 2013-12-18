@@ -1,5 +1,5 @@
 pip install -r requirments.txt
-./apps_by_seller.py SELLER_ID [> OUTPUT_FILENAME]
+./apps_by_seller.py SELLER_ID COUNTRY_2 [> OUTPUT_FILENAME]
 
 
 tm4rlpdwzg - INFRAWARE, 3 приложения,

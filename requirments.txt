@@ -2,3 +2,4 @@ grab
 pycurl
 lxml
 requests
+pycountry

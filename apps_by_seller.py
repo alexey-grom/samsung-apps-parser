@@ -8,15 +8,26 @@ from logging import getLogger, basicConfig, DEBUG, INFO
 from json import dumps
 from time import sleep
 from pprint import pprint
+from urlparse import parse_qs, urlparse
+from re import sub
 
 from requests import get
 from grab import Grab
-# from grab.base import default_config
+from grab.error import GrabTimeoutError, GrabAuthError, GrabMisuseError, GrabConnectionError, GrabNetworkError
 from grab.spider import Spider, Task
 from grab.tools.structured import TreeInterface, x
 from grab.ext import doc
+from pycountry import countries
 
 import config
+
+
+#
+# vibor strani
+# http://apps.samsung.com/mars/main/getCountry.as
+#
+# smena strani
+# http://apps.samsung.com/mars/common/selectCountry.as?countryCode=PHL&rmbCnry=Y&countrySetOption=
 
 
 def __structure(self, *args, **kwargs):
@@ -38,48 +49,68 @@ def get_proxy_list(country_code=None, count=100):
                  [proxy['address'], proxy['type']]))
         for proxy in proxies
     ]
+    # pprint(proxies)
     return proxies
 
 
 class Parser(Spider):
     PER_PAGE = 20
+    USE_PROXY = True
 
     def __init__(self, seller_id, country_code, *args, **kwargs):
         self.seller_id = seller_id
         self.country_code = country_code
-        self.proxies_use_count = {}
         self.proxies = []
-        self.apps = []
+        self.used_proxies = set()
+        self.apps = {}
+        self.country = countries.get(alpha2=country_code)
+        self.grab = Grab()
+        self.reinit_grab()
         super(Parser, self).__init__(*args, **kwargs)
 
+    def get_app_id_by_url(self, url):
+        query = parse_qs(urlparse(url).query, keep_blank_values=True)
+        return query.get('productId', [''])[0]
+
     def get_next_proxy(self):
-        proxy_address = None
-
-        while True:
-            while not self.proxies:
-                self.proxies = get_proxy_list(self.country_code, 100)
-                self.proxies = filter(
-                    lambda proxy: proxy['proxy'] not in self.proxies_use_count,
-                    self.proxies
-                )
-                if not self.proxies:
-                    logger.info(u'Кончились прокси, ожидание новых')
-                    sleep(10)
-                else:
-                    break
-
-            proxy_address = self.proxies[0]['proxy']
-
-            if proxy_address not in self.proxies_use_count:
-                self.proxies_use_count[proxy_address] = 0
-
-            if self.proxies_use_count[proxy_address] >= config.PROXY_USE_LIMIT:
-                del self.proxies[0]
+        while not self.proxies:
+            self.proxies = get_proxy_list(self.country_code, 100)
+            self.proxies = filter(
+                lambda proxy: tuple(proxy.values()) not in self.used_proxies,
+                self.proxies
+            )
+            if not self.proxies:
+                logger.info(u'Кончились прокси, ожидание новых')
+                sleep(10)
             else:
                 break
+        proxy = self.proxies[0]
+        self.used_proxies.add(tuple(proxy.values()))
+        del self.proxies[0]
+        return proxy
 
-        self.proxies_use_count[proxy_address] += 1
-        return self.proxies[0]
+    def reinit_grab(self):
+        self.grab_used_count = 1
+        while True:
+            logger.info(u'Proxy change...')
+            self.grab.clear_cookies()
+            self.grab.setup(**self.get_next_proxy())
+            try:
+                self.grab.go('http://apps.samsung.com/mars/common/selectCountry.as?countryCode=%s&rmbCnry=Y&countrySetOption=' % (
+                    self.country.alpha3
+                ))
+                if self.grab.response.code == 200:
+                    break
+            except (GrabTimeoutError, GrabAuthError, GrabMisuseError, GrabConnectionError, GrabNetworkError):
+                pass
+            logger.info(u'Bad proxy, try next...')
+
+    def get_grab(self):
+        if self.grab_used_count < config.PROXY_USE_LIMIT:
+            self.grab_used_count += 1
+            return self.grab
+        self.reinit_grab()
+        return self.grab.clone()
 
     def task_generator(self):
         logger.info(u'Поиск приложений...')
@@ -97,8 +128,8 @@ class Parser(Spider):
                 'perPage': self.PER_PAGE,
                 'lastIndex': page * self.PER_PAGE,
             })
-        grab = Grab()
-        grab.setup(**self.get_next_proxy())
+
+        grab = self.get_grab()
         grab.setup(
             url='http://apps.samsung.com/mars/topApps/getSellerList.as',
             method='POST',
@@ -111,11 +142,8 @@ class Parser(Spider):
         )
 
     def make_app_task(self, app_url):
-        grab = Grab()
-        grab.setup(
-            url=app_url,
-            **self.get_next_proxy()
-        )
+        grab = self.get_grab()
+        grab.setup(url=app_url)
         self.add_task(Task(
             'app_detail',
             grab=grab
@@ -130,14 +158,17 @@ class Parser(Spider):
         else:
             app.rating = 0.0
         app.market_id = search(r'productId=(\d+)(&|$)', app.url).group(1)
-        #app.title = unicode(app.title)
-        #app.cost = unicode(app.cost)
         return app
 
     def store_apps_data(self, apps):
-        self.apps.extend(apps)
+        for app in apps:
+            productId = self.get_app_id_by_url(app['url'])
+            # pprint(productId)
+            self.apps[productId] = app
 
     def task_seller_list(self, grab, task):
+        # print grab.response.body
+
         apps = grab.doc.structure(
             '//*[@class="apps-thumb-list-p"]',
             x(
@@ -158,21 +189,23 @@ class Parser(Spider):
         if len(apps) == self.PER_PAGE:
             yield self.make_apps_task(task.page + 1)
 
-    def task_seller_list_fallback(self, task):
-        new_task = task.clone()
-        proxy = self.get_next_proxy()
-        pprint(proxy)
-        new_task.grab_config.update(proxy)
-        self.add_task(new_task)
-
     def task_app_detail(self, grab, task):
-        print [grab, task]
+        productId = self.get_app_id_by_url(grab.response.url)
 
-    def task_app_detail_fallback(self, task):
-        new_task = task.clone()
-        proxy = self.get_next_proxy()
-        new_task.grab_config.update(proxy)
-        self.add_task(new_task)
+        rows = grab.xpath_list('//*[@class="detail-spec"]//*[@class="spec-wrap"]//dl//dd')
+        rows = map(
+            lambda node: sub(r'\s+', ' ', node.text_content().strip()),
+            rows
+        )
+        rows = rows[1:5] + rows[7:10]
+        values = dict(zip(
+            ['category', 'type', 'first registration date',
+             'version (update date)', 'age', 'required OS',
+             'size', 'supported languages', ],
+            rows
+        ))
+        # pprint(values)
+        self.apps[productId].update(values)
 
     def shutdown(self):
         result = dumps(
@@ -197,9 +230,7 @@ if __name__ == '__main__':
 
     try:
         parser = Parser(args.seller_id,
-                        args.country_code,
-                        network_try_limit=1,
-                        task_try_limit=1)
+                        args.country_code)
         parser.run()
     except KeyboardInterrupt:
         logger.error(u' Прервано')

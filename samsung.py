@@ -173,8 +173,8 @@ if __name__ == '__main__':
     basicConfig(level=DEBUG)
 
     argument_parser = ArgumentParser()
-    argument_parser.add_argument('seller_id')
     argument_parser.add_argument('country_code')
+    argument_parser.add_argument('seller_id')
     args = argument_parser.parse_args()
 
     #seller_id = 'arsdalt7cj'
@@ -187,6 +187,6 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logger.error(u' Прервано')
 
-    print parser.render_stats()
+    # print parser.render_stats()
 
     exit()

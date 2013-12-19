@@ -1,6 +1,15 @@
 pip install -r requirments.txt
-./apps_by_seller.py SELLER_ID COUNTRY_2 [> OUTPUT_FILENAME]
+
+SAMSUNG APPS
+============
+
+./samsung.py COUNTRY_2 SELLER_ID [> OUTPUT_FILENAME]
+
+./samsung.py RU tm4rlpdwzg  - INFRAWARE, 3 приложения,
+./samsung.py RU w7ouf3k0em  - Chintamani Rath, 647 приложений
 
 
-tm4rlpdwzg - INFRAWARE, 3 приложения,
-w7ouf3k0em - Chintamani Rath, 647 приложений
+GOOGLE PLAY
+===========
+
+./google.py COUNTRY_2 VENDOR_NAME [> OUTPUT_FILENAME]

@@ -177,11 +177,13 @@ if __name__ == '__main__':
                                  nargs='+')
     args = argument_parser.parse_args()
 
+    parser = Parser(u' '.join(args.developer_name),
+                    args.country_code)
     try:
-        parser = Parser(u' '.join(args.developer_name),
-                        args.country_code)
         parser.run()
     except KeyboardInterrupt:
         logger.error(u' Прервано')
+
+    # print parser.render_stats()
 
     exit()

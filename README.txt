@@ -1,5 +1,9 @@
 pip install -r requirments.txt
 
+
+Настроено получение проксилистов от проекта https://github.com/alexey-grom/proxy-finder
+
+
 SAMSUNG APPS
 ============
 

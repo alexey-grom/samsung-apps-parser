@@ -177,9 +177,6 @@ if __name__ == '__main__':
     argument_parser.add_argument('seller_id')
     args = argument_parser.parse_args()
 
-    #seller_id = 'arsdalt7cj'
-    #seller_id = 'w7ouf3k0em'
-
     parser = Parser(args.seller_id,
                     args.country_code)
     try:

@@ -3,3 +3,4 @@ pycurl
 lxml
 requests
 pycountry
+gevent
